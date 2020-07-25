@@ -226,6 +226,7 @@ class IlsangDistributionBot(commands.AutoShardedBot):
 		await self.wait_until_ready()
 		if basicSetting[6] != "" and basicSetting[6] != 0 :
 			backup_date = datetime.datetime.now() - datetime.timedelta(days = int(basicSetting[4])) + datetime.timedelta(hours = int(basicSetting[8]))
+			log_delete_date = datetime.datetime.now() - datetime.timedelta(days = int(30))
 			
 			jungsan_document :list = []
 			delete_jungsan_id : list = []
@@ -3382,21 +3383,6 @@ class bankCog(commands.Cog):
 			args = int(args)
 		except ValueError:
 			return await ctx.send(f"**[금액]**은 숫자로 입력 해주세요")
-
-		check_member_data : list = []
-		check_member_list : list = []
-		wrong_input_id : list = []
-
-		check_member_data = list(self.member_db.find())
-		for game_id in check_member_data:
-			check_member_list.append(game_id['game_ID'])
-
-		for game_id in input_guild_support_money_ID_data[1:]:
-			if game_id not in check_member_list:
-				wrong_input_id.append(game_id)
-
-		if len(wrong_input_id) > 0:
-			return await ctx.send(f"```지원자 [{', '.join(wrong_input_id)}](은)는 혈원으로 등록되지 않은 아이디 입니다.```")	
 
 		result_guild_update : dict = self.guild_db.update_one({"_id":"guild"}, {"$inc":{"guild_money":args}}, upsert = True)
 		if result_guild_update.raw_result["nModified"] < 1 and "upserted" not in result_guild_update.raw_result:
