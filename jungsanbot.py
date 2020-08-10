@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*- 
 
-##################################### 서버용 V4 ##########################################
+##################################### 서버용 V5 ##########################################
 #########################################################################################
 #########################################################################################
 #########################################################################################
@@ -152,7 +152,10 @@ def get_detail_embed(info : dict = {}):
 	embed.add_field(name = "[ 루팅 ]", value = f"```{info['toggle']}```")
 	embed.add_field(name = "[ 상태 ]", value = f"```{info['itemstatus']}```")
 	embed.add_field(name = "[ 판매금 ]", value = f"```{info['price']}```")
-	embed.add_field(name = "[ 참여자 ]", value = f"```{', '.join(info['before_jungsan_ID']+info['after_jungsan_ID'])}```")
+	if info['before_jungsan_ID']:
+		embed.add_field(name = "[ 정산전 ]", value = f"```{', '.join(info['before_jungsan_ID'])}```", inline = False)
+	if info['after_jungsan_ID']:
+		embed.add_field(name = "[ 정산후 ]", value = f"```{', '.join(info['after_jungsan_ID'])}```")
 	if 'image_url' in info.keys():
 		if info['image_url'] is not None:
 			embed.set_image(url = info['image_url'])
@@ -192,7 +195,7 @@ class IlsangDistributionBot(commands.AutoShardedBot):
 				"guild_money":0,
 				"back_up_period":14,
 				"checktime":15,
-				"distributionchannel":"",
+				"distributionchannel":0,
 				"tax":5
 				}
 			update_guild_data : dict = self.db.jungsan.guild.update_one({"_id":"guild"}, {"$set":init_guild_data}, upsert = True)
@@ -480,7 +483,7 @@ class adminCog(commands.Cog):
 			return await ctx.send(f"{ctx.author.mention}님은 혈원으로 등록되어 있지 않습니다!")
 
 		embed = discord.Embed(
-			title = f"⚙️ 기본 설정(v4)",
+			title = f"⚙️ 기본 설정(v5)",
 			color=0xff00ff
 			)
 		embed.add_field(name = f"🚫 삭제 주기", value = f"```{basicSetting[4]} 일```")
@@ -552,7 +555,7 @@ class adminCog(commands.Cog):
 			member_command_list += f"{','.join(commandSetting[8])} [아이디]\n\n"   # 혈원수정
 			
 			member_command_list += f"{','.join(commandSetting[28])}\n"   # 계좌
-			member_command_list += f"{','.join(commandSetting[44])}\n"   # 창고
+			member_command_list += f"{','.join(commandSetting[44])} (아이템명)\n"   # 창고
 			member_command_list += f"{','.join(commandSetting[11])}\n\n"   # 정산확인
 			
 			member_command_list += f"{','.join(commandSetting[12])} [보스명] [아이템] [루팅자] [아이디1] [아이디2] ... (참고이미지 url)\n\n"   # 등록
@@ -575,6 +578,7 @@ class adminCog(commands.Cog):
 			member_command_list += f"{','.join(commandSetting[50])} [순번] [수정이미지 url]\n"   # 이미지수정
 			member_command_list += f"{','.join(commandSetting[24])} [순번] [금액]\n"   # 판매
 			member_command_list += f"{','.join(commandSetting[45])} [순번] [금액] [인원]\n"   # 뽑기판매
+			member_command_list += f"{','.join(commandSetting[51])} [순번]\n"   # 판매취소
 			member_command_list += f"{','.join(commandSetting[29])} [순번] [금액]\n"   # 저축
 			member_command_list += f"{','.join(commandSetting[48])} [순번] [금액] [인원]\n"   # 뽑기저축
 			member_command_list += f"{','.join(commandSetting[25])} [순번] [아이디]\n"   # 정산
@@ -680,6 +684,7 @@ class adminCog(commands.Cog):
 	@commands.has_permissions(manage_guild=True)
 	@commands.command(name=commandSetting[2][0], aliases=commandSetting[2][1:])
 	async def initialize_all_guild_data(self, ctx):
+		global basicSetting
 		if ctx.message.channel.id != int(basicSetting[6]) or basicSetting[6] == "":
 			return
 
@@ -708,8 +713,27 @@ class adminCog(commands.Cog):
 		if str(reaction) == "⭕":
 			self.guild_db.delete_many({})
 			self.guild_db_log.delete_many({})
+			init_guild_data : dict = {
+				"guild_money":0,
+				"back_up_period":14,
+				"checktime":15,
+				"distributionchannel":0,
+				"tax":5
+				}
+			update_guild_data : dict = self.guild_db.update_one({"_id":"guild"}, {"$set":init_guild_data}, upsert = True)
+
+			basicSetting[4] = init_guild_data['back_up_period']
+			basicSetting[5] = init_guild_data['checktime']
+			basicSetting[6] = init_guild_data['distributionchannel']
+			basicSetting[7] = init_guild_data['tax']
+			
+			# basicSetting[4] = backup_period
+			# basicSetting[5] = checktime
+			# basicSetting[6] = distributionchannel
+			# basicSetting[7] = tax
+
 			print(f"< 혈비/로그 데이터 초기화 완료 >")
-			return await ctx.send(f"☠️ 혈비/로그 데이터 초기화 완료! ☠️")
+			return await ctx.send(f"☠️ 혈비/로그 데이터 초기화 완료! ☠️\n**[{commandSetting[36][0]}]** 명령어를 입력하신 후 사용해주시기 바랍니다.")
 		else:
 			return await ctx.send(f"**초기화**가 취소되었습니다.\n")	
 
@@ -769,6 +793,9 @@ class adminCog(commands.Cog):
 
 		result = list(self.guild_db_log.find({}))
 
+		if len(result) == 0:
+			return await ctx.send(f"```혈비 로그가 없습니다!```")
+
 		sorted_result = sorted(list([result_data['log_date'] for result_data in result]))
 
 		log_date_list : list = []
@@ -823,6 +850,7 @@ class adminCog(commands.Cog):
 			else:
 				await asyncio.sleep(0.1)
 				await ctx.send(embed = embed)
+		return
 
 class memberCog(commands.Cog): 
 	def __init__(self, bot):
@@ -989,21 +1017,26 @@ class memberCog(commands.Cog):
 		
 		if len_jungsan_document != 0:
 			for jungsan_data in jungsan_document:
+				tmp_before_data = jungsan_data["before_jungsan_ID"]
+				tmp_after_data = jungsan_data["after_jungsan_ID"]
+				tmp_toggle_data = jungsan_data["toggle"]
+				tmp_regist_data = jungsan_data["regist"]
+				
 				if member_data['game_ID'] in jungsan_data["before_jungsan_ID"]:
 					jungsan_data["before_jungsan_ID"].remove(member_data['game_ID'])
 					jungsan_data["before_jungsan_ID"].append(args)
 					tmp_before_data = jungsan_data["before_jungsan_ID"]
-					result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"before_jungsan_ID":jungsan_data["before_jungsan_ID"]}}, upsert = False)
+					#result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"before_jungsan_ID":jungsan_data["before_jungsan_ID"]}}, upsert = False)
 				
 				if member_data['game_ID'] in jungsan_data["after_jungsan_ID"]:
 					jungsan_data["after_jungsan_ID"].remove(member_data['game_ID'])
 					jungsan_data["after_jungsan_ID"].append(args)
 					tmp_after_data = jungsan_data["after_jungsan_ID"]
-					result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"after_jungsan_ID":jungsan_data["after_jungsan_ID"]}}, upsert = False)
+					#result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"after_jungsan_ID":jungsan_data["after_jungsan_ID"]}}, upsert = False)
 				
 				if member_data['game_ID'] in jungsan_data["toggle"]:
 					tmp_toggle_data = args
-					result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"toggle":args}}, upsert = False)
+					#result = self.jungsan_db.update_one({"_id":jungsan_data['_id']}, {"$set":{"toggle":args}}, upsert = False)
 
 				if member_data['game_ID'] in jungsan_data["regist"]:
 					tmp_regist_data = args
@@ -2813,6 +2846,79 @@ class manageCog(commands.Cog):
 
 		return await ctx.send(f"**[ 순번 : {input_sell_price_data[0]} ]**   💰판매금 **[ {input_sell_price_data[1]} ]** 등록 완료! 분배를 시작합니다.")
 
+	################ 판매 취소 ################ 
+	@commands.command(name=commandSetting[51][0], aliases=commandSetting[51][1:])
+	async def cancel_sell_data(self, ctx, *, args : str = None):
+		if ctx.message.channel.id != int(basicSetting[6]) or basicSetting[6] == "":
+			return
+
+		member_data : dict = self.member_db.find_one({"_id":ctx.author.id})
+
+		if not member_data:
+			return await ctx.send(f"{ctx.author.mention}님은 혈원으로 등록되어 있지 않습니다!")
+
+		if not args:
+			return await ctx.send(f"**{commandSetting[51][0]} [순번]** 양식으로 정산 해주세요")
+
+		input_distribute_finish_data = args.split()
+		len_input_distribute_finish_data = len(input_distribute_finish_data)
+
+		if len_input_distribute_finish_data != 1:
+			return await ctx.send(f"**{commandSetting[51][0]} [순번]** 양식으로 정산 해주세요")
+
+		try:
+			input_distribute_finish_data[0] = int(input_distribute_finish_data[0])
+		except ValueError:
+			return await ctx.send(f"**[순번]**은 숫자로 입력 해주세요")
+
+		jungsan_data : dict = self.jungsan_db.find_one({"$and" : [{"$or" : [{"toggle_ID" : str(ctx.author.id)}, {"regist_ID" : str(ctx.author.id)}]}, {"_id":int(input_distribute_finish_data[0])}, {"itemstatus":"분배중"}, {"after_jungsan_ID":[]}]})
+
+		if not jungsan_data:
+			return await ctx.send(f"{ctx.author.mention}님! 등록하신 정산 내역이 **[ 분배중 ]**이 아니거나 **[정산]**처리된 인원이 있거나 정산 목록에 없습니다. **[ {commandSetting[13][0]} ]** 명령을 통해 확인해주세요")
+
+		embed = discord.Embed(
+				title = "📜 판매취소 정보",
+				description = "",
+				color=0x00ff00
+				)
+		embed.add_field(name = "[ 순번 ]", value = f"```{jungsan_data['_id']}```", inline = False)
+		embed.add_field(name = "[ 등록 ]", value = f"```{jungsan_data['regist']}```")
+		embed.add_field(name = "[ 일시 ]", value = f"```{jungsan_data['getdate'].strftime('%y-%m-%d %H:%M:%S')}```", inline = False)
+		embed.add_field(name = "[ 보스 ]", value = f"```{jungsan_data['boss']}```")
+		embed.add_field(name = "[ 아이템 ]", value = f"```{jungsan_data['item']}```")
+		embed.add_field(name = "[ 루팅 ]", value = f"```{jungsan_data['toggle']}```")
+		embed.add_field(name = "[ 상태 ]", value = f"```{jungsan_data['itemstatus']}```")
+		embed.add_field(name = "[ 판매금 ]", value = f"```{jungsan_data['price']}```")
+		embed.add_field(name = "[ 참여자 ]", value = f"```{', '.join(jungsan_data['before_jungsan_ID'])}```")
+		if jungsan_data["image_url"] != "":
+			embed.set_image(url = jungsan_data["image_url"])
+		await ctx.send(embed = embed)
+
+		data_regist_warning_message = await ctx.send(f"**판매취소하실 등록 내역을 확인해 보세요!**\n**판매취소 : ⭕ 취소: ❌**\n({basicSetting[5]}초 동안 입력이 없을시 판매취소가 취소됩니다.)", tts=False)
+
+		emoji_list : list = ["⭕", "❌"]
+		for emoji in emoji_list:
+			await data_regist_warning_message.add_reaction(emoji)
+
+		def reaction_check(reaction, user):
+			return (reaction.message.id == data_regist_warning_message.id) and (user.id == ctx.author.id) and (str(reaction) in emoji_list)
+
+		try:
+			reaction, user = await self.bot.wait_for('reaction_add', check = reaction_check, timeout = int(basicSetting[5]))
+		except asyncio.TimeoutError:
+			for emoji in emoji_list:
+				await data_regist_warning_message.remove_reaction(emoji, self.bot.user)
+			return await ctx.send(f"시간이 초과됐습니다. **판매취소**를 취소합니다!")
+
+		if str(reaction) == "⭕":
+			result = self.jungsan_db.update_one({"_id":input_distribute_finish_data[0]}, {"$set":{"price":0, "each_price":0, "itemstatus":"미판매"}}, upsert = False)
+			if result.raw_result["nModified"] < 1 and "upserted" not in result.raw_result:
+				return await ctx.send(f"{ctx.author.mention}, 판매 취소 실패.") 
+
+			return await ctx.send(f"📥 **[ 순번 : {input_distribute_finish_data[0]} ]** 판매취소 완료! 📥")
+		else:
+			return await ctx.send(f"**판매취소**가 취소되었습니다.\n")
+
 	################ 정산 처리 입력 ################ 
 	@commands.command(name=commandSetting[25][0], aliases=commandSetting[25][1:])
 	async def distribute_finish(self, ctx, *, args : str = None):
@@ -3545,52 +3651,71 @@ class bankCog(commands.Cog):
 		if not member_data:
 			return await ctx.send(f"{ctx.author.mention}님은 혈원으로 등록되어 있지 않습니다!")
 
-		if args:
-			return await ctx.send(f"**{commandSetting[44][0]}** 만 입력 해주세요!")
+		if not args:
+			pipeline = [
+						{"$match": {"itemstatus":"미판매"}},  # 조건
+						{"$group": {"_id": "$item", "count": {"$sum":1}}}  # 요런식으로 변환해준다.
+					]
 
-		pipeline = [
-				    {"$match": {"itemstatus":"미판매"}},  # 조건
-				    {"$group": {"_id": "$item", "count": {"$sum":1}}}  # 요런식으로 변환해준다.
-				]
+			item_counts = self.jungsan_db.aggregate(pipeline)
 
-		item_counts = self.jungsan_db.aggregate(pipeline)
+			sorted_item_counts : dict = sorted(item_counts, key=lambda item_counts:item_counts['count'], reverse = True)
+			len_sorted_item_counts = len(sorted_item_counts)
+			#print(sorted_item_counts)
 
-		sorted_item_counts : dict = sorted(item_counts, key=lambda item_counts:item_counts['count'], reverse = True)
-		len_sorted_item_counts = len(sorted_item_counts)
-		#print(sorted_item_counts)
+			embed_list : list = []
+			embed_index : int = 0
+			embed_cnt : int = 0
 
-		embed_list : list = []
-		embed_index : int = 0
-		embed_cnt : int = 0
+			embed = discord.Embed(title = f'📦  `창고 내역`', description = "", color = 0x00ff00)
 
-		embed = discord.Embed(title = '', description = f'📦  `창고 내역`', color = 0x00ff00)
+			embed_list.append(embed)
 
-		embed_list.append(embed)
-
-		if len_sorted_item_counts > 0 :
-			for item_data in sorted_item_counts:
-				embed_cnt += 1
-				if embed_cnt > 24 :
-					embed_cnt = 0
-					embed_index += 1
-					tmp_embed = discord.Embed(
-						title = "",
-						description = "",
-						color=0x00ff00
-						)
-					embed_list.append(tmp_embed)
-				embed_list[embed_index].add_field(name = item_data['_id'], value = f"```{item_data['count']}```")
-			embed.set_footer(text = f"전체 아이템 종류  :  {len_sorted_item_counts}개")
-			if len(embed_list) > 1:
-				for embed_data in embed_list:
-					await asyncio.sleep(0.1)
-					await ctx.send(embed = embed_data)
-				return
-			else:
+			if len_sorted_item_counts > 0 :
+				for item_data in sorted_item_counts:
+					embed_cnt += 1
+					if embed_cnt > 24 :
+						embed_cnt = 0
+						embed_index += 1
+						tmp_embed = discord.Embed(
+							title = "",
+							description = "",
+							color=0x00ff00
+							)
+						embed_list.append(tmp_embed)
+					embed_list[embed_index].add_field(name = item_data['_id'], value = f"```{item_data['count']}```")
+				embed.set_footer(text = f"전체 아이템 종류  :  {len_sorted_item_counts}개")
+				if len(embed_list) > 1:
+					for embed_data in embed_list:
+						await asyncio.sleep(0.1)
+						await ctx.send(embed = embed_data)
+					return
+				else:
+					return await ctx.send(embed=embed, tts=False)
+			else :
+				embed.add_field(name = '\u200b\n', value = '창고가 비었습니다.\n\u200b')
 				return await ctx.send(embed=embed, tts=False)
-		else :
-			embed.add_field(name = '\u200b\n', value = '창고가 비었습니다.\n\u200b')
-			return await ctx.send(embed=embed, tts=False)
+		else:
+			toggle_documents = list(self.jungsan_db.find({"itemstatus" : "미판매", "item" : args}))
+
+			if len(toggle_documents) == 0:
+				return await ctx.send(f"`창고`에 해당 아이템(`{args}`)이 없습니다!")
+
+			toggle_list : list = []
+			tmp_toggle_list : list = []
+
+			for toggle in toggle_documents:
+				tmp_toggle_list.append(toggle["toggle"])
+			
+			toggle_name_list = list(set(tmp_toggle_list))
+
+			for name in toggle_name_list:
+				toggle_list.append(f"{name}({tmp_toggle_list.count(name)}개)")
+
+			embed = discord.Embed(title = f'📦  `{args}` 소지자 (총 `{len(toggle_name_list)}`명)', description = "", color = 0x00ff00)	
+			embed.description = f"```{', '.join(toggle_list)}```"
+
+			return await ctx.send(embed = embed)
 
 ilsang_distribution_bot : IlsangDistributionBot = IlsangDistributionBot()
 ilsang_distribution_bot.add_cog(settingCog(ilsang_distribution_bot))
